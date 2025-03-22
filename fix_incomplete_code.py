@@ -14,6 +14,7 @@ output_file = "vulnerabilities_fixed_completed.csv"
 fixed_only_file = "vulnerabilities_fixed_only.csv"
 progress_file = "completion_progress.log"
 error_log_file = "error_log.txt"
+debug_file = "debug_log.txt"
 
 # Configuration
 MAX_WORKERS = 4
@@ -35,31 +36,65 @@ def log_error(message):
     with open(error_log_file, "a") as f:
         f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {message}\n")
 
+def debug_log(message):
+    """Log debug information"""
+    print(message)  # Print to console
+    with open(debug_file, "a") as f:
+        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {message}\n")
+
 def is_incomplete_code(code):
     """Check if the code is incomplete by looking for common markers and structure"""
+    code_str = str(code)
+    
+    # Common markers that indicate explanatory text
     markers = [
         "To fix the",
         "Here is",
         "Here's",
         "Below is",
-        "The following"
+        "The following",
+        "This code",
+        "In this example",
+        "We need to",
+        "You should",
+        "First,",
+        "Finally,",
     ]
     
     # Check for markers
-    has_markers = any(marker.lower() in str(code).lower() for marker in markers)
+    has_markers = any(marker.lower() in code_str.lower() for marker in markers)
     
-    # Check if code looks incomplete (missing closing braces, etc.)
-    code_str = str(code)
+    # Check structural indicators
     opening_braces = code_str.count("{")
     closing_braces = code_str.count("}")
+    has_mismatched_braces = opening_braces != closing_braces
     
-    # Code is incomplete if:
-    # 1. Contains explanation markers, or
-    # 2. Has mismatched braces, or
-    # 3. Ends with explanation text
-    return (has_markers or 
-            opening_braces != closing_braces or 
-            any(code_str.strip().endswith(marker) for marker in markers))
+    # Check for incomplete method definitions
+    has_incomplete_methods = (
+        code_str.count("public") > code_str.count("}") or
+        code_str.count("private") > code_str.count("}") or
+        code_str.count("protected") > code_str.count("}")
+    )
+    
+    # Check for code fragments
+    looks_like_fragment = (
+        code_str.strip().endswith((";", "{", "}", "*/", "//")) or
+        len(code_str.strip().split('\n')) < 3  # Too few lines
+    )
+    
+    is_incomplete = (
+        has_markers or
+        has_mismatched_braces or
+        has_incomplete_methods or
+        looks_like_fragment
+    )
+    
+    # Log the decision for debugging
+    debug_log(f"Code analysis: markers={has_markers}, mismatched_braces={has_mismatched_braces}, "
+             f"incomplete_methods={has_incomplete_methods}, fragment={looks_like_fragment}, "
+             f"is_incomplete={is_incomplete}")
+    
+    return is_incomplete
 
 def validate_completed_code(original_code, completed_code, vulnerability_type):
     """Validate that the completed code is acceptable"""
@@ -212,17 +247,30 @@ def main():
     # Create a copy of the dataframe for processing
     processed_df = df.copy()
     
+    # Count incomplete rows first
+    incomplete_count = 0
+    for index, row in df.iterrows():
+        if is_incomplete_code(str(row['fixed_code'])):
+            incomplete_count += 1
+            debug_log(f"Row {index} identified as incomplete. Vulnerability type: {row['vulnerability_type']}")
+    
+    debug_log(f"Found {incomplete_count} incomplete rows out of {len(df)} total rows")
+    print(f"Found {incomplete_count} incomplete rows that need fixing...")
+    
     # Get unprocessed rows
     unprocessed_rows = list(df.iloc[last_processed_index + 1:].iterrows())
     total_rows = len(unprocessed_rows)
     
-    print(f"Processing {total_rows} rows with {MAX_WORKERS} workers...")
+    print(f"Processing {total_rows} remaining rows with {MAX_WORKERS} workers...")
     
+    processed_count = 0
     with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         # Process rows in batches
         for batch_start in range(0, total_rows, BATCH_SIZE):
             batch_end = min(batch_start + BATCH_SIZE, total_rows)
             batch = unprocessed_rows[batch_start:batch_end]
+            
+            debug_log(f"Processing batch {batch_start//BATCH_SIZE + 1}, rows {batch_start} to {batch_end}")
             
             # Process batch
             futures = [executor.submit(process_row, row) for row in batch]
@@ -235,18 +283,25 @@ def main():
                         processed_df.at[index, 'fixed_code'] = cleaned_code
                         processed_df.to_csv(output_file, index=False)
                         update_progress(index)
+                        processed_count += 1
+                        debug_log(f"Successfully processed row {index}. Total processed: {processed_count}")
                 except Exception as e:
-                    print(f"Error processing batch: {e}")
+                    error_msg = f"Error processing batch: {str(e)}"
+                    print(error_msg)
+                    debug_log(error_msg)
             
             # Force garbage collection between batches
             gc.collect()
             
             # Check system resources
             if is_system_overloaded():
-                print("System resources high, pausing for 10 seconds...")
+                debug_log("System resources high, pausing for 10 seconds...")
                 time.sleep(10)
     
-    print(f"Processing complete. Updated file saved as {output_file}")
+    debug_log(f"Processing complete. Processed {processed_count} rows out of {incomplete_count} incomplete rows")
+    print(f"Processing complete. Processed {processed_count} rows out of {incomplete_count} incomplete rows")
+    print(f"Updated file saved as {output_file}")
+    print(f"Check {debug_file} for detailed processing log")
 
 if __name__ == "__main__":
     main() 
