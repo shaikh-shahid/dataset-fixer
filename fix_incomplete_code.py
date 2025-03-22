@@ -49,9 +49,19 @@ def is_incomplete_code(code):
     # Check if the text starts with an explanation (case insensitive)
     starts_with_explanation = bool(re.match(r'^\s*to\s+fix\s+', code_str.lower()))
     
-    # Look for Java code blocks with more flexible pattern
-    code_blocks = re.findall(r'```(?:java)?\s*(.*?)```', code_str, re.DOTALL) or \
-                 re.findall(r'```\s*(.*?)```', code_str, re.DOTALL)
+    # More flexible pattern to match code blocks
+    patterns = [
+        r'```java\s*(.*?)\s*```',  # Matches ```java ... ``` with optional whitespace
+        r'```\s*java\s*(.*?)\s*```',  # Matches ``` java ... ``` with optional whitespace
+        r'```\s*(.*?)\s*```'  # Fallback pattern for any code block
+    ]
+    
+    code_blocks = []
+    for pattern in patterns:
+        blocks = re.findall(pattern, code_str, re.DOTALL)
+        if blocks:
+            code_blocks.extend(blocks)
+            break  # Stop after finding blocks with the first matching pattern
     
     debug_log(f"Code analysis - Starts with 'To fix': {starts_with_explanation}, "
              f"Number of code blocks found: {len(code_blocks)}")
@@ -68,8 +78,9 @@ def is_incomplete_code(code):
         has_missing_parens = last_block.count('(') != last_block.count(')')
         ends_with_control = last_block.rstrip().endswith(('catch', 'try', 'else', 'finally', '{', '}', ';'))
         
-        debug_log(f"Java code analysis - Missing braces: {has_missing_braces}, "
-                 f"Missing parentheses: {has_missing_parens}, "
+        debug_log(f"Java code analysis - Code block length: {len(last_block)}, "
+                 f"Missing braces: {has_missing_braces} ({last_block.count('{')} vs {last_block.count('}')}), "
+                 f"Missing parentheses: {has_missing_parens} ({last_block.count('(')} vs {last_block.count(')')}), "
                  f"Ends abruptly: {ends_with_control}")
         
         return has_missing_braces or has_missing_parens or ends_with_control
@@ -122,18 +133,31 @@ def extract_code_blocks(text):
 
 def clean_code(text):
     """Clean the code by extracting Java code blocks"""
-    # Look for Java code blocks with more flexible pattern
-    code_blocks = re.findall(r'```(?:java)?\s*(.*?)```', text, re.DOTALL) or \
-                 re.findall(r'```\s*(.*?)```', text, re.DOTALL)
+    # More flexible pattern to match code blocks
+    patterns = [
+        r'```java\s*(.*?)\s*```',  # Matches ```java ... ``` with optional whitespace
+        r'```\s*java\s*(.*?)\s*```',  # Matches ``` java ... ``` with optional whitespace
+        r'```\s*(.*?)\s*```'  # Fallback pattern for any code block
+    ]
     
-    if code_blocks:
-        # Get the last code block (the fixed version)
-        code = code_blocks[-1].strip()
-        debug_log(f"Found code block with length: {len(code)}")
-        return code
+    for pattern in patterns:
+        code_blocks = re.findall(pattern, text, re.DOTALL)
+        if code_blocks:
+            # Get the last code block (the fixed version)
+            code = code_blocks[-1].strip()
+            debug_log(f"Found code block with pattern '{pattern}', length: {len(code)}")
+            return code
     
-    # If no code blocks found, return the cleaned text
-    debug_log("No code blocks found, returning cleaned text")
+    # If no code blocks found, try to extract code after "Here is the"
+    if "Here is the" in text:
+        parts = text.split("Here is the")
+        if len(parts) > 1:
+            potential_code = parts[1].strip()
+            debug_log(f"Found potential code after 'Here is the', length: {len(potential_code)}")
+            return potential_code
+    
+    # If still no code found, return the cleaned text
+    debug_log("No code blocks or markers found, returning cleaned text")
     return text.strip()
 
 def get_last_processed_index():
