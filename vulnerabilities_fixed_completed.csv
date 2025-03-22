@@ -1,0 +1,882 @@
+vulnerability_type,vulnerable_code,fixed_code
+SQL Injection,"import java.sql.*;
+
+public class SQLInjectionVulnerable {
+    public static void main(String[] args) {
+        String userInput = ""admin'; DROP TABLE users; --""; // User input with malicious SQL injection payload
+
+        try {
+            Connection connection = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+            Statement statement = connection.createStatement();
+
+            // Vulnerable code - concatenating user input directly into the SQL query
+            String query = ""SELECT * FROM users WHERE username='"" + userInput + ""'"";
+            ResultSet resultSet = statement.executeQuery(query);
+
+            while (resultSet.next()) {
+                System.out.println(""Username: "" + resultSet.getString(""username""));
+                System.out.println(""Password: "" + resultSet.getString(""password""));
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}","import java.sql.*;
+
+    public class SQLInjectionSecure {
+        private static final String USERNAME = ""username"";
+        private static final String PASSWORD = ""password"";
+        private static final String DB_URL = ""jdbc:mysql://localhost:3306/mydatabase"";
+
+        public static void main(String[] args) {
+            String userInput = ""admin'; DROP TABLE users; --""; // User input with malicious SQL injection payload
+
+            try (Connection connection = DriverManager.getConnection(DB_URL, USERNAME, PASSWORD)) {
+                String query = ""SELECT * FROM users WHERE username=?"";
+                PreparedStatement preparedStatement = connection.prepareStatement(query);
+                preparedStatement.setString(1, userInput);
+
+                ResultSet resultSet = preparedStatement.executeQuery();
+
+                while (resultSet.next()) {
+                    System.out.println(""Username: "" + resultSet.getString(""username""));
+                    System.out.println(""Password: "" + resultSet.getString(""password""));
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }"
+SQL Injection,"import java.sql.*;
+
+public class VulnerableSQLInjection {
+    public static void main(String[] args) {
+        String userInput = ""'; DROP TABLE users; --"";
+        
+        try {
+            Connection conn = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+            Statement stmt = conn.createStatement();
+            
+            String query = ""SELECT * FROM users WHERE username = '"" + userInput + ""'"";
+            ResultSet rs = stmt.executeQuery(query);
+            
+            while (rs.next()) {
+                System.out.println(""User ID: "" + rs.getInt(""id"") + "", Username: "" + rs.getString(""username""));
+            }
+            
+            conn.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}","import java.sql.*;
+
+public class SecureSQLInjection {
+    public static void main(String[] args) {
+        String userInput = ""'; DROP TABLE users; --"";
+
+        try {
+            Connection conn = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+
+            PreparedStatement pstmt = conn.prepareStatement(
+                ""SELECT * FROM users WHERE username = ? ESCAPE '\\'""); // Added ESCAPE clause here
+            pstmt.setString(1, userInput);
+
+            ResultSet rs = pstmt.executeQuery();
+
+            while (rs.next()) {
+                System.out.println(""User ID: "" + rs.getInt(""id"") + "", Username: "" + rs.getString(""username""));
+            }
+
+            conn.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}"
+SQL Injection,"import java.sql.*;
+
+public class SQLInjectionExample {
+
+    public static void main(String[] args) {
+        try {
+            String userInput = ""'; DROP TABLE users; --""; // User input containing malicious SQL injection
+
+            // Create a connection to the database
+            Connection connection = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+
+            // Create a statement
+            Statement statement = connection.createStatement();
+
+            // Construct and execute the SQL query using user input directly
+            String query = ""SELECT * FROM users WHERE username = '"" + userInput + ""'"";
+            ResultSet resultSet = statement.executeQuery(query);
+
+            // Process the query results
+            while (resultSet.next()) {
+                System.out.println(resultSet.getString(""username""));
+                System.out.println(resultSet.getString(""email""));
+            }
+
+            // Close resources
+            resultSet.close();
+            statement.close();
+            connection.close();
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}","resultSet.close();
+        preparedStatement.close();
+        connection.close();
+    } catch (SQLException e) {
+        e.printStackTrace();
+    }
+}"
+SQL Injection,"import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.Scanner;
+
+public class SQLInjectionVulnerable {
+
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        
+        System.out.print(""Enter a username: "");
+        String username = scanner.nextLine();
+        
+        try {
+            Connection conn = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""root"", ""password"");
+            Statement stmt = conn.createStatement();
+            
+            String query = ""SELECT * FROM users WHERE username='"" + username + ""'"";
+            ResultSet rs = stmt.executeQuery(query);
+            
+            while(rs.next()) {
+                System.out.println(""User ID: "" + rs.getInt(""id"") + "", Username: "" + rs.getString(""username""));
+            }
+            
+            conn.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+}","Statement stmt = conn.createStatement();
+            // replace with PreparedStatement as follows:
+            PreparedStatement pstmt = conn.prepareStatement(query);
+            // move 'pstmt.setString(1, username)' here:
+            pstmt.setString(1, username);"
+SQL Injection,"import java.sql.*;
+
+public class VulnerableCode {
+    public static void main(String[] args) {
+        String userInput = ""'; DROP TABLE users; --"";
+
+        try {
+            Connection conn = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+            Statement stmt = conn.createStatement();
+
+            String query = ""SELECT * FROM users WHERE username = '"" + userInput + ""'"";
+            ResultSet rs = stmt.executeQuery(query);
+
+            while (rs.next()) {
+                System.out.println(""Username: "" + rs.getString(""username""));
+            }
+
+            conn.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}","import java.sql.*;
+
+   public class SecureCode {
+       private static final String SQL_INJECTION_ESCAPE_CHARACTER = ""\u005c"";
+
+       public static void main(String[] args) {
+           String userInput = ""'; DROP TABLE users; --"";
+
+           try {
+               Connection conn = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+
+               String query = ""SELECT * FROM users WHERE username = ?"";
+               PreparedStatement pstmt = conn.prepareStatement(query);
+               pstmt.setString(1, escapeSqlInput(userInput));
+
+               ResultSet rs = pstmt.executeQuery();
+
+               while (rs.next()) {
+                   System.out.println(""Username: "" + rs.getString(""username""));
+               }
+
+               conn.close();
+           } catch (SQLException e) {
+               e.printStackTrace();
+           }
+       }
+
+       private static String escapeSqlInput(String text) {
+           return text.replaceAll(""'"", SQL_INJECTION_ESCAPE_CHARACTER + ""'"");
+       }
+   }"
+SQL Injection,"import java.sql.*;
+
+public class SQLInjectionVulnerable {
+
+    public static void main(String[] args) {
+        String userInput = ""'; DROP TABLE users; --""; // Malicious input simulating SQL Injection
+        
+        try {
+            Connection connection = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+            Statement statement = connection.createStatement();
+            
+            String query = ""SELECT * FROM users WHERE username = '"" + userInput + ""'"";
+            ResultSet resultSet = statement.executeQuery(query);
+            
+            while(resultSet.next()) {
+                System.out.println(""Username: "" + resultSet.getString(""username""));
+                System.out.println(""Email: "" + resultSet.getString(""email""));
+            }
+            
+            connection.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}","import java.sql.*;
+
+   public class SecureSQLInjectionPrevention {
+
+       private static final String SQL_INJECTION_REGEX = ""[-';--\\/]"";
+       private static final Pattern INJECTION_PATTERN = Pattern.compile(SQL_INJECTION_REGEX);
+
+       public static void main(String[] args) {
+           String userInput = ""'; DROP TABLE users; --""; // Malicious input simulating SQL Injection
+
+           try {
+               Connection connection = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+
+               String query = ""SELECT * FROM users WHERE username = ?"";
+               PreparedStatement preparedStatement = connection.prepareStatement(query);
+
+               // Sanitize userInput by removing SQL Injection patterns
+               Matcher matcher = INJECTION_PATTERN.matcher(userInput);
+               String sanitizedUserInput = matcher.replaceAll("""");
+               preparedStatement.setString(1, sanitizedUserInput);
+
+               ResultSet resultSet = preparedStatement.executeQuery();
+
+               while(resultSet.next()) {
+                   System.out.println(""Username: "" + resultSet.getString(""username""));
+                   System.out.println(""Email: "" + resultSet.getString(""email""));
+               }
+
+               connection.close();
+           } catch (SQLException e) {
+               e.printStackTrace();
+           }
+       }
+   }"
+SQL Injection,"import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+public class SQLInjectionVulnerable {
+
+    public static void main(String[] args) {
+        String userInput = ""'; DROP TABLE users; --""; // Malicious input
+
+        try {
+            Connection conn = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+            Statement stmt = conn.createStatement();
+            
+            String query = ""SELECT * FROM users WHERE username='"" + userInput + ""'"";
+            ResultSet rs = stmt.executeQuery(query);
+            
+            while (rs.next()) {
+                System.out.println(""Username: "" + rs.getString(""username""));
+            }
+            
+            conn.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}","import java.sql.Connection;
+    import java.sql.DriverManager;
+    import java.sql.PreparedStatement;
+    import java.sql.ResultSet;
+    import java.sql.SQLException;
+
+    public class SQLInjectionSecure {
+
+        private static final String DB_URL = ""jdbc:mysql://localhost:3306/mydatabase"";
+        private static final String USER = ""username"";
+        private static final String PASS = ""password"";
+
+        public static void main(String[] args) {
+            String userInput = ""'; DROP TABLE users; --""; // Malicious input
+
+            try (Connection conn = DriverManager.getConnection(DB_URL, USER, PASS)) {
+                // Use PreparedStatement with a parameterized query to prevent SQL Injection
+                String query = ""SELECT * FROM users WHERE username=?"";
+                PreparedStatement pstmt = conn.prepareStatement(query);
+                pstmt.setString(1, userInput);
+
+                ResultSet rs = pstmt.executeQuery();
+
+                while (rs.next()) {
+                    System.out.println(""Username: "" + rs.getString(""username""));
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }"
+SQL Injection,"import java.sql.*;
+
+public class SQLInjectionVulnerable {
+
+    public static void main(String[] args) {
+        String userInput = ""'; DROP TABLE users; --"";
+        
+        try {
+            Connection conn = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+            Statement stmt = conn.createStatement();
+            
+            String query = ""SELECT * FROM users WHERE username = '"" + userInput + ""'"";
+            ResultSet rs = stmt.executeQuery(query);
+            
+            while (rs.next()) {
+                System.out.println(""User ID: "" + rs.getInt(""id"") + "", Username: "" + rs.getString(""username""));
+            }
+            
+            conn.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}","import java.sql.*;
+
+   public class SQLInjectionSecure {
+
+       public static void main(String[] args) {
+           String userInput = ""'; DROP TABLE users; --"";
+
+           try (Connection conn = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"")) {
+               PreparedStatement pstmt = conn.prepareStatement(""SELECT * FROM users WHERE username = ?"");
+               pstmt.setString(1, userInput);
+
+               ResultSet rs = pstmt.executeQuery();
+
+               while (rs.next()) {
+                   System.out.println(""User ID: "" + rs.getInt(""id"") + "", Username: "" + rs.getString(""username""));
+               }
+           } catch (SQLException e) {
+               e.printStackTrace();
+           }
+       }
+   }"
+SQL Injection,"import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+public class SQLInjectionVulnerableExample {
+
+    public static void main(String[] args) {
+        String userInput = ""'; DROP TABLE users; --"";
+
+        try {
+            Connection connection = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+            Statement statement = connection.createStatement();
+
+            String query = ""SELECT * FROM users WHERE username = '"" + userInput + ""'"";
+            ResultSet resultSet = statement.executeQuery(query);
+
+            while (resultSet.next()) {
+                System.out.println(resultSet.getString(""username""));
+            }
+
+            resultSet.close();
+            statement.close();
+            connection.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}","import java.sql.Connection;
+    import java.sql.DriverManager;
+    import java.sql.PreparedStatement;
+    import java.sql.ResultSet;
+    import java.sql.SQLException;
+
+    public class SQLInjectionSecureExample {
+
+        public static void main(String[] args) {
+            String userInput = ""'; DROP TABLE users; --"";
+
+            try (Connection connection = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"")) {
+                PreparedStatement statement = connection.prepareStatement(
+                        ""SELECT * FROM users WHERE username = ?"");
+                statement.setString(1, userInput);
+
+                ResultSet resultSet = statement.executeQuery();
+
+                while (resultSet.next()) {
+                    System.out.println(resultSet.getString(""username""));
+                }
+
+                resultSet.close();
+                statement.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }"
+SQL Injection,"import java.sql.*;
+
+public class SQLInjectionExample {
+
+    public static void main(String[] args) {
+        String userInput = ""'; DROP TABLE users; --""; // User input containing SQL injection
+        String query = ""SELECT * FROM users WHERE username = '"" + userInput + ""'"";
+
+        try {
+            Connection connection = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+            Statement statement = connection.createStatement();
+            ResultSet resultSet = statement.executeQuery(query);
+
+            while (resultSet.next()) {
+                System.out.println(resultSet.getString(""username""));
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}","import java.sql.*;
+
+public class SecureSQLInjectionExample {
+    public static void main(String[] args) {
+        String userInput = ""'; DROP TABLE users; --""; // User input containing SQL injection
+        String query = ""SELECT * FROM users WHERE username = ?"";
+
+        try (Connection connection = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+             PreparedStatement statement = connection.prepareStatement(query)) {
+
+            // Replace the commented line below with the following code
+            statement.setString(1, cleanUserInput(userInput));
+
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    System.out.println(resultSet.getString(""username""));
+                }
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Add the following method to sanitize user input before using it in a SQL query
+    private static String cleanUserInput(String input) {
+        // Implement a method to sanitize user input, such as escaping single quotes and removing malicious SQL commands
+        return input.replaceAll(""'"", ""\\'"").replaceAll("";"", """");
+    }
+}"
+SQL Injection,"import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+public class SQLInjectionVulnerableCode {
+
+    public static void main(String[] args) {
+        String userInput = ""'; DROP TABLE users; --""; // Malicious input for SQL Injection
+
+        try {
+            Connection connection = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+            Statement statement = connection.createStatement();
+
+            String query = ""SELECT * FROM users WHERE username = '"" + userInput + ""'"";
+            ResultSet resultSet = statement.executeQuery(query);
+
+            while (resultSet.next()) {
+                System.out.println(""Username: "" + resultSet.getString(""username""));
+                System.out.println(""Email: "" + resultSet.getString(""email""));
+                System.out.println(""-------------------------"");
+            }
+
+            connection.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}","import java.sql.PreparedStatement;
+   import java.sql.PreparedStatement;
+   import java.sql.PreparedStatement;
+   PreparedStatement preparedStatement = connection.prepareStatement(query);
+   preparedStatement.setString(1, userInput.replace(""--"", """"));"
+SQL Injection,"import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+public class SQLInjectionVulnerable {
+
+    public static void main(String[] args) {
+        String userInput = ""'; DROP TABLE users; --"";
+        
+        try {
+            Connection conn = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+            Statement stmt = conn.createStatement();
+            
+            String query = ""SELECT * FROM users WHERE username='"" + userInput + ""'"";
+            
+            ResultSet rs = stmt.executeQuery(query);
+            
+            while (rs.next()) {
+                System.out.println(rs.getString(""username""));
+            }
+            
+            conn.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}","import java.sql.Connection;
+   import java.sql.DriverManager;
+   import java.sql.PreparedStatement;
+   import java.sql.ResultSet;
+   import java.sql.SQLException;
+
+   public class SQLInjectionFixed {
+
+       public static void main(String[] args) {
+           String userInput = ""'; DROP TABLE users; --"";
+
+           try (Connection conn = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"")) {
+               String query = ""SELECT * FROM users WHERE username=?"";
+               PreparedStatement stmt = conn.prepareStatement(query);
+               stmt.setString(1, userInput);
+
+               try (ResultSet rs = stmt.executeQuery()) {
+                   while (rs.next()) {
+                       System.out.println(rs.getString(""username""));
+                   }
+               } catch (SQLException e) {
+                   // Handle exceptions here
+               }
+           } catch (SQLException e) {
+               e.printStackTrace();
+           }
+       }
+   }"
+SQL Injection,"import java.sql.*;
+
+public class SQLInjectionVulnerable {
+
+    public static void main(String[] args) {
+        String userInput = ""'; DROP TABLE users; --""; // User input with malicious intent
+        
+        try {
+            Connection conn = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+            Statement stmt = conn.createStatement();
+            
+            String query = ""SELECT * FROM users WHERE username = '"" + userInput + ""'"";
+            ResultSet rs = stmt.executeQuery(query);
+            
+            while (rs.next()) {
+                System.out.println(""Username: "" + rs.getString(""username""));
+                System.out.println(""Email: "" + rs.getString(""email""));
+            }
+            
+            conn.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}","import java.sql.*;
+
+   public class SQLInjectionSecure {
+
+       public static void main(String[] args) {
+           String userInput = ""'; DROP TABLE users; --""; // User input with malicious intent
+
+           try {
+               Connection conn = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+
+               // Use PreparedStatement to avoid SQL Injection
+               String query = ""SELECT * FROM users WHERE username = ?"";
+               PreparedStatement pstmt = conn.prepareStatement(query);
+               pstmt.setString(1, prepareInput(userInput));
+
+               ResultSet rs = pstmt.executeQuery();
+
+               while (rs.next()) {
+                   System.out.println(""Username: "" + rs.getString(""username""));
+                   System.out.println(""Email: "" + rs.getString(""email""));
+               }
+
+               conn.close();
+           } catch (SQLException e) {
+               e.printStackTrace();
+           }
+       }
+
+       private static String prepareInput(String input) {
+           // Implement a function to clean and sanitize the user input before using it in SQL queries.
+           return input.replaceAll(""'|--|;"", """");
+       }
+   }"
+SQL Injection,"import java.sql.*;
+
+public class SQLInjectionVulnerability {
+    public static void main(String[] args) {
+        try {
+            String userInput = ""'; DROP TABLE users; --""; // Simulated user input with malicious intent
+            
+            // Connect to the database
+            Connection conn = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+            
+            // Create a SQL statement
+            Statement stmt = conn.createStatement();
+            
+            // Vulnerable query construction - concatenating user input directly into the SQL query
+            String query = ""SELECT * FROM users WHERE username='"" + userInput + ""'"";
+            
+            ResultSet rs = stmt.executeQuery(query);
+            
+            while (rs.next()) {
+                System.out.println(rs.getString(""username""));
+                System.out.println(rs.getString(""email""));
+            }
+            
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}","import java.sql.*;
+
+    public class SecureSQLInjectionPrevention {
+        private static final String DB_URL = ""jdbc:mysql://localhost:3306/mydatabase"";
+        private static final String USER = ""username"";
+        private static final String PASS = ""password"";
+
+        public static void main(String[] args) {
+            try {
+                String userInput = ""'; DROP TABLE users; --""; // Simulated user input with malicious intent
+
+                Connection conn = DriverManager.getConnection(DB_URL, USER, PASS);
+
+                PreparedStatement pstmt = conn.prepareStatement(""SELECT * FROM users WHERE username=?"");
+
+                pstmt.setString(1, userInput);
+
+                ResultSet rs = pstmt.executeQuery();
+
+                while (rs.next()) {
+                    System.out.println(rs.getString(""username""));
+                    System.out.println(rs.getString(""email""));
+                }
+
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }"
+SQL Injection,"import java.sql.*;
+
+public class SQLInjectionVulnerable {
+    public static void main(String[] args) {
+        String userInput = ""'; DROP TABLE users; --"";
+        String query = ""SELECT * FROM users WHERE username = '"" + userInput + ""'"";
+
+        try {
+            Connection connection = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+            Statement statement = connection.createStatement();
+            ResultSet resultSet = statement.executeQuery(query);
+
+            while (resultSet.next()) {
+                System.out.println(resultSet.getString(""username""));
+            }
+
+            connection.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}","import java.sql.*;
+
+public class SQLInjectionFixed {
+    public static void main(String[] args) {
+        String userInput = ""'; DROP TABLE users; --"";
+
+        try {
+            Connection connection = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+            PreparedStatement statement = connection.prepareStatement( ""SELECT * FROM users WHERE username = ? "" );
+            statement.setString(1, userInput);
+
+            ResultSet resultSet = statement.executeQuery();
+
+            while (resultSet.next()) {
+                System.out.println(resultSet.getString(""username""));
+            }
+
+            connection.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}"
+SQL Injection,"import java.sql.*;
+
+public class UserAuthentication {
+
+    public boolean authenticateUser(String username, String password) {
+        Connection conn = null;
+        Statement stmt = null;
+        ResultSet rs = null;
+
+        try {
+            conn = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+            stmt = conn.createStatement();
+            String query = ""SELECT * FROM users WHERE username='"" + username + ""' AND password='"" + password + ""'"";
+            rs = stmt.executeQuery(query);
+
+            return rs.next();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        } finally {
+            try {
+                if (rs != null) rs.close();
+                if (stmt != null) stmt.close();
+                if (conn != null) conn.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        UserAuthentication auth = new UserAuthentication();
+        
+        // This input can be manipulated to perform SQL Injection
+        String userInputUsername = ""admin'; --"";
+        String userInputPassword = ""password123"";
+
+        boolean isAuthenticated = auth","String userInputUsername = ""admin' --"";
+        String userInputPassword = ""password123"";
+
+        boolean isAuthenticated = auth.authenticateUser(userInputUsername, userInputPassword);"
+SQL Injection,"import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.Scanner;
+
+public class SQLInjectionVulnerable {
+    public static void main(String[] args) {
+        try {
+            Scanner scanner = new Scanner(System.in);
+            System.out.print(""Enter username: "");
+            String username = scanner.nextLine();
+
+            // Vulnerable code where user input is directly concatenated into the SQL query
+            String query = ""SELECT * FROM users WHERE username='"" + username + ""'"";
+            
+            Connection connection = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""root"", ""password"");
+            Statement statement = connection.createStatement();
+            
+            ResultSet resultSet = statement.executeQuery(query);
+            
+            while(resultSet.next()) {
+                System.out.println(""User found: "" + resultSet.getString(""username""));
+            }
+            
+            connection.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}","```import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.util.Scanner;
+
+public class Login {
+    public static void main(String[] args) throws Exception {
+        Scanner sc = new Scanner(System.in);
+        System.out.println(""Enter username: "");
+        String username = sc.nextLine();
+        System.out.println(""Enter password: "");
+        String password = sc.nextLine();
+
+        Connection connection = DriverManager.getConnection(URL, USERNAME, PASSWORD);
+        PreparedStatement preparedStatement = connection.prepareStatement(""SELECT * FROM users WHERE username = ? AND password = ?"");
+        preparedStatement.setString(1, username);
+        preparedStatement.setString(2, password);
+
+        ResultSet resultSet = preparedStatement.executeQuery();
+        while (resultSet.next()) {
+            System.out.println(""User found: "" + resultSet.getString(""username""));
+        }
+    }
+}
+```"
+SQL Injection,"import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.Scanner;
+
+public class SQLInjectionExample {
+    public static void main(String[] args) {
+        try {
+            // Establishing a connection to a database
+            Connection conn = DriverManager.getConnection(""jdbc:mysql://localhost:3306/mydatabase"", ""username"", ""password"");
+            
+            // Taking user input for username
+            Scanner scanner = new Scanner(System.in);
+            System.out.print(""Enter username: "");
+            String username = scanner.nextLine();
+            
+            // Creating and executing an SQL query using user input without proper validation
+            Statement stmt = conn.createStatement();
+            String query = ""SELECT * FROM users WHERE username='"" + username + ""'"";
+            ResultSet rs = stmt.executeQuery(query);
+            
+            // Processing the result set
+            while (rs.next()) {
+                System.out.println(""User ID: "" + rs.getInt(""id"") + "", Username: "" + rs.getString(""username""));
+            }
+            
+            // Closing resources
+            rs.close();
+            stmt.close();
+            conn.close();
+        } catch (SQLException e","ResultSet rs = pstmt.executeQuery();
+
+            // Processing the result set
+            while (rs.next()) {
+                System.out.println(""User ID: "" + rs.getInt(""id"") + "", Username: "" + rs.getString(""username""));
+            }
+
+            // Closing resources
+            rs.close();
+            pstmt.close();
+            conn.close();"
