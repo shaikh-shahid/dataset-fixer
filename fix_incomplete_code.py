@@ -44,24 +44,44 @@ def debug_log(message):
 
 def is_incomplete_code(code):
     """Check if the code is incomplete Java code"""
-    code_str = str(code).strip()
+    code_str = str(code).strip().replace('""', '"')  # Unescape quotes
     
     # Check if the text starts with an explanation (case insensitive)
     starts_with_explanation = bool(re.match(r'^\s*to\s+fix\s+', code_str.lower()))
     
     # More flexible pattern to match code blocks
     patterns = [
-        r'```java\s*(.*?)\s*```',  # Matches ```java ... ``` with optional whitespace
-        r'```\s*java\s*(.*?)\s*```',  # Matches ``` java ... ``` with optional whitespace
-        r'```\s*(.*?)\s*```'  # Fallback pattern for any code block
+        r'```java\s*(.*?)\s*```',  # Standard Java block
+        r'```\s*java\s*(.*?)\s*```',  # Java block with space
+        r'```\s*(.*?)\s*```',  # Any code block
+        r'.*?Here is the.*?(?:version|code).*?:\s*\n*(.*?)(?:\n\s*$|\Z)',  # After "Here is the ... code/version:"
+        r'.*?Here is the.*?:\s*\n*(.*?)(?:\n\s*$|\Z)',  # After "Here is the:"
     ]
     
     code_blocks = []
     for pattern in patterns:
-        blocks = re.findall(pattern, code_str, re.DOTALL)
-        if blocks:
-            code_blocks.extend(blocks)
-            break  # Stop after finding blocks with the first matching pattern
+        try:
+            matches = re.findall(pattern, code_str, re.DOTALL | re.IGNORECASE)
+            if matches:
+                code_blocks.extend(matches)
+                break  # Stop after finding blocks with the first matching pattern
+        except Exception as e:
+            debug_log(f"Error matching pattern '{pattern}': {str(e)}")
+    
+    # If no patterns matched, try to find code-like blocks
+    if not code_blocks:
+        lines = code_str.split('\n')
+        current_block = []
+        for line in lines:
+            line = line.strip()
+            if re.search(r'[{};()]|class|public|private|protected|void|return|import', line):
+                current_block.append(line)
+            elif current_block and not line:  # Empty line after code
+                if len('\n'.join(current_block)) > MIN_CODE_LENGTH:
+                    code_blocks.append('\n'.join(current_block))
+                current_block = []
+        if current_block and len('\n'.join(current_block)) > MIN_CODE_LENGTH:
+            code_blocks.append('\n'.join(current_block))
     
     debug_log(f"Code analysis - Starts with 'To fix': {starts_with_explanation}, "
              f"Number of code blocks found: {len(code_blocks)}")
@@ -133,28 +153,58 @@ def extract_code_blocks(text):
 
 def clean_code(text):
     """Clean the code by extracting Java code blocks"""
-    # More flexible pattern to match code blocks
+    # Unescape quotes in the text
+    text = text.replace('""', '"')
+    
+    # More flexible pattern to match code blocks, handling escaped quotes
     patterns = [
-        r'```java\s*(.*?)\s*```',  # Matches ```java ... ``` with optional whitespace
-        r'```\s*java\s*(.*?)\s*```',  # Matches ``` java ... ``` with optional whitespace
-        r'```\s*(.*?)\s*```'  # Fallback pattern for any code block
+        r'```java\s*(.*?)\s*```',  # Standard Java block
+        r'```\s*java\s*(.*?)\s*```',  # Java block with space
+        r'```\s*(.*?)\s*```',  # Any code block
+        r'.*?Here is the.*?(?:version|code).*?:\s*\n*(.*?)(?:\n\s*$|\Z)',  # After "Here is the ... code/version:"
+        r'.*?Here is the.*?:\s*\n*(.*?)(?:\n\s*$|\Z)',  # After "Here is the:"
     ]
     
-    for pattern in patterns:
-        code_blocks = re.findall(pattern, text, re.DOTALL)
-        if code_blocks:
-            # Get the last code block (the fixed version)
-            code = code_blocks[-1].strip()
-            debug_log(f"Found code block with pattern '{pattern}', length: {len(code)}")
-            return code
+    # Debug the input text
+    debug_log(f"Input text starts with: {text[:100]}...")
+    debug_log(f"Input text contains backticks: {'```' in text}")
     
-    # If no code blocks found, try to extract code after "Here is the"
-    if "Here is the" in text:
-        parts = text.split("Here is the")
-        if len(parts) > 1:
-            potential_code = parts[1].strip()
-            debug_log(f"Found potential code after 'Here is the', length: {len(potential_code)}")
-            return potential_code
+    for pattern in patterns:
+        try:
+            matches = re.findall(pattern, text, re.DOTALL | re.IGNORECASE)
+            if matches:
+                # Get the last match (the fixed version)
+                code = matches[-1].strip()
+                debug_log(f"Found code block with pattern '{pattern}', length: {len(code)}")
+                if len(code) > MIN_CODE_LENGTH:  # Only return if it's long enough to be actual code
+                    return code
+        except Exception as e:
+            debug_log(f"Error matching pattern '{pattern}': {str(e)}")
+    
+    # If no patterns matched, try to extract the largest code-like block
+    lines = text.split('\n')
+    code_blocks = []
+    current_block = []
+    
+    for line in lines:
+        line = line.strip()
+        # If line looks like code
+        if re.search(r'[{};()]|class|public|private|protected|void|return|import', line):
+            current_block.append(line)
+        elif current_block and not line:  # Empty line after code
+            if len('\n'.join(current_block)) > MIN_CODE_LENGTH:
+                code_blocks.append('\n'.join(current_block))
+            current_block = []
+    
+    # Add the last block if it exists
+    if current_block and len('\n'.join(current_block)) > MIN_CODE_LENGTH:
+        code_blocks.append('\n'.join(current_block))
+    
+    if code_blocks:
+        # Return the longest code block
+        longest_block = max(code_blocks, key=len)
+        debug_log(f"Found code-like block, length: {len(longest_block)}")
+        return longest_block
     
     # If still no code found, return the cleaned text
     debug_log("No code blocks or markers found, returning cleaned text")
