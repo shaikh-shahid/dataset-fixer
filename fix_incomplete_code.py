@@ -49,13 +49,17 @@ def is_incomplete_code(code):
     # Check if the text starts with an explanation (case insensitive)
     starts_with_explanation = bool(re.match(r'^\s*to\s+fix\s+', code_str.lower()))
     
-    # Look for Java code blocks
-    code_blocks = re.findall(r'```java\s*(.*?)```', code_str, re.DOTALL)
+    # Look for Java code blocks with more flexible pattern
+    code_blocks = re.findall(r'```(?:java)?\s*(.*?)```', code_str, re.DOTALL) or \
+                 re.findall(r'```\s*(.*?)```', code_str, re.DOTALL)
+    
+    debug_log(f"Code analysis - Starts with 'To fix': {starts_with_explanation}, "
+             f"Number of code blocks found: {len(code_blocks)}")
     
     # If it starts with "To fix" and has no complete code block, it's incomplete
     if starts_with_explanation:
         if not code_blocks:
-            debug_log(f"Found 'To fix' but no complete Java code block")
+            debug_log(f"Found 'To fix' but no complete code block")
             return True
         
         # Check if the last code block is incomplete
@@ -118,15 +122,18 @@ def extract_code_blocks(text):
 
 def clean_code(text):
     """Clean the code by extracting Java code blocks"""
-    # Look for Java code blocks
-    code_blocks = re.findall(r'```java\s*(.*?)```', text, re.DOTALL)
+    # Look for Java code blocks with more flexible pattern
+    code_blocks = re.findall(r'```(?:java)?\s*(.*?)```', text, re.DOTALL) or \
+                 re.findall(r'```\s*(.*?)```', text, re.DOTALL)
     
     if code_blocks:
         # Get the last code block (the fixed version)
         code = code_blocks[-1].strip()
+        debug_log(f"Found code block with length: {len(code)}")
         return code
     
     # If no code blocks found, return the cleaned text
+    debug_log("No code blocks found, returning cleaned text")
     return text.strip()
 
 def get_last_processed_index():
@@ -147,14 +154,17 @@ def complete_code_with_ollama(incomplete_code, vulnerability_type):
     if is_system_overloaded():
         time.sleep(5)
     
-    # Clean up the incomplete code first
-    cleaned_incomplete = clean_code(incomplete_code)
-    
-    # Extract the explanation part
-    explanation_match = re.match(r'^\s*to\s+fix\s+(.*?)```java', incomplete_code, re.DOTALL | re.IGNORECASE)
-    explanation = explanation_match.group(1).strip() if explanation_match else ""
-    
-    prompt = f"""Complete this {vulnerability_type} vulnerability fix. 
+    try:
+        # Clean up the incomplete code first
+        cleaned_incomplete = clean_code(incomplete_code)
+        debug_log(f"Cleaned incomplete code length: {len(cleaned_incomplete)}")
+        
+        # Extract the explanation part
+        explanation_match = re.match(r'^\s*to\s+fix\s+(.*?)```', incomplete_code, re.DOTALL | re.IGNORECASE)
+        explanation = explanation_match.group(1).strip() if explanation_match else ""
+        debug_log(f"Extracted explanation length: {len(explanation)}")
+        
+        prompt = f"""Complete this {vulnerability_type} vulnerability fix. 
 The explanation of the fix is: {explanation}
 
 The incomplete code is:
@@ -168,63 +178,86 @@ Requirements:
 5. Return ONLY the complete code without any explanations
 6. Include all necessary imports
 
-Return the complete code inside triple backticks with the java language specifier."""
-    
-    retry_count = 0
-    best_completion = None
-    max_length = 0
-    
-    while retry_count < MAX_RETRIES:
-        try:
-            response = ollama.chat(
-                model="codellama:7b",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a secure coding expert. Complete the code without adding explanations."
-                    },
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            
-            completed_code = response['message']['content']
-            cleaned_completion = clean_code(completed_code)
-            
-            # Validate the completion
-            if validate_completed_code(cleaned_incomplete, cleaned_completion, vulnerability_type):
-                if len(cleaned_completion) > max_length:
-                    best_completion = cleaned_completion
-                    max_length = len(cleaned_completion)
-                    if max_length > MIN_CODE_LENGTH * 2:  # If we got a good completion, stop early
-                        break
-            
-            retry_count += 1
-            if retry_count < MAX_RETRIES:
+Return the complete code inside triple backticks."""
+        
+        retry_count = 0
+        best_completion = None
+        max_length = 0
+        
+        while retry_count < MAX_RETRIES:
+            try:
+                debug_log(f"Attempt {retry_count + 1} to complete code")
+                response = ollama.chat(
+                    model="codellama:7b",
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a secure coding expert. Complete the code without adding explanations."
+                        },
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+                
+                completed_code = response['message']['content']
+                cleaned_completion = clean_code(completed_code)
+                debug_log(f"Got completion of length: {len(cleaned_completion)}")
+                
+                # Validate the completion
+                if validate_completed_code(cleaned_incomplete, cleaned_completion, vulnerability_type):
+                    if len(cleaned_completion) > max_length:
+                        best_completion = cleaned_completion
+                        max_length = len(cleaned_completion)
+                        debug_log(f"Found better completion of length: {max_length}")
+                        if max_length > MIN_CODE_LENGTH * 2:  # If we got a good completion, stop early
+                            break
+                
+                retry_count += 1
+                if retry_count < MAX_RETRIES:
+                    time.sleep(2)
+            except Exception as e:
+                error_msg = f"Error in completion attempt {retry_count}: {str(e)}"
+                debug_log(error_msg)
+                log_error(error_msg)
+                retry_count += 1
                 time.sleep(2)
-        except Exception as e:
-            log_error(f"Error in completion attempt {retry_count}: {str(e)}")
-            retry_count += 1
-            time.sleep(2)
-    
-    return best_completion
+        
+        return best_completion
+    except Exception as e:
+        error_msg = f"Error in complete_code_with_ollama: {str(e)}"
+        debug_log(error_msg)
+        log_error(error_msg)
+        return None
 
 def process_row(args):
     """Process a single row with error handling"""
     index, row = args
     try:
+        debug_log(f"Starting to process row {index}")
         if is_incomplete_code(str(row['fixed_code'])):
+            debug_log(f"Row {index} identified as incomplete, attempting to complete")
             original_code = str(row['fixed_code'])
             completed_code = complete_code_with_ollama(original_code, row['vulnerability_type'])
             
-            if completed_code and validate_completed_code(original_code, completed_code, row['vulnerability_type']):
-                return index, completed_code, True
+            if completed_code:
+                debug_log(f"Got completion for row {index}, validating")
+                if validate_completed_code(original_code, completed_code, row['vulnerability_type']):
+                    debug_log(f"Validation passed for row {index}")
+                    return index, completed_code, True
+                else:
+                    debug_log(f"Validation failed for row {index}")
             else:
-                log_error(f"Failed to generate valid completion for row {index}")
-                return index, original_code, False
+                debug_log(f"No completion generated for row {index}")
+            
+            log_error(f"Failed to generate valid completion for row {index}")
+            return index, original_code, False
+        else:
+            debug_log(f"Row {index} is already complete")
+            return index, str(row['fixed_code']), False
     except Exception as e:
-        log_error(f"Error processing row {index}: {str(e)}")
+        error_msg = f"Error processing row {index}: {str(e)}"
+        debug_log(error_msg)
+        log_error(error_msg)
         return index, str(row['fixed_code']), False
-    return index, str(row['fixed_code']), False
 
 def main():
     # Read the CSV file
@@ -238,34 +271,60 @@ def main():
     
     # Count incomplete rows first
     incomplete_count = 0
-    for index, row in df.iterrows():
+    total_rows = len(df)
+    print("\nScanning for incomplete rows...")
+    
+    for index, row in tqdm(df.iterrows(), total=total_rows, desc="Scanning"):
         if is_incomplete_code(str(row['fixed_code'])):
             incomplete_count += 1
             debug_log(f"Row {index} identified as incomplete. Vulnerability type: {row['vulnerability_type']}")
     
     debug_log(f"Found {incomplete_count} incomplete rows out of {len(df)} total rows")
-    print(f"Found {incomplete_count} incomplete rows that need fixing...")
+    print(f"\nFound {incomplete_count} incomplete rows out of {total_rows} total rows that need fixing...")
     
     # Get unprocessed rows
     unprocessed_rows = list(df.iloc[last_processed_index + 1:].iterrows())
-    total_rows = len(unprocessed_rows)
+    remaining_rows = len(unprocessed_rows)
     
-    print(f"Processing {total_rows} remaining rows with {MAX_WORKERS} workers...")
+    if remaining_rows == 0:
+        print("No remaining rows to process. All done!")
+        return
+    
+    print(f"\nProcessing {remaining_rows} remaining rows with {MAX_WORKERS} workers...")
     
     processed_count = 0
+    start_time = time.time()
+    
     with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         # Process rows in batches
-        for batch_start in range(0, total_rows, BATCH_SIZE):
-            batch_end = min(batch_start + BATCH_SIZE, total_rows)
+        for batch_start in range(0, remaining_rows, BATCH_SIZE):
+            batch_end = min(batch_start + BATCH_SIZE, remaining_rows)
             batch = unprocessed_rows[batch_start:batch_end]
             
-            debug_log(f"Processing batch {batch_start//BATCH_SIZE + 1}, rows {batch_start} to {batch_end}")
+            # Calculate progress
+            progress = (batch_start / remaining_rows) * 100
+            elapsed_time = time.time() - start_time
+            rows_per_second = batch_start / elapsed_time if elapsed_time > 0 else 0
+            estimated_remaining = (remaining_rows - batch_start) / rows_per_second if rows_per_second > 0 else 0
+            
+            progress_msg = (
+                f"\nProgress: {progress:.1f}% ({batch_start}/{remaining_rows} rows)"
+                f"\nProcessing speed: {rows_per_second:.1f} rows/second"
+                f"\nEstimated time remaining: {estimated_remaining/3600:.1f} hours"
+                f"\nProcessed so far: {processed_count} rows completed successfully"
+                f"\nCurrently processing batch {batch_start//BATCH_SIZE + 1}, rows {batch_start} to {batch_end}"
+            )
+            print(progress_msg)
+            debug_log(progress_msg)
             
             # Process batch
             futures = [executor.submit(process_row, row) for row in batch]
             
-            # Handle results
-            for future in concurrent.futures.as_completed(futures):
+            # Handle results with progress bar
+            completed_futures = 0
+            for future in tqdm(concurrent.futures.as_completed(futures), 
+                             total=len(futures), 
+                             desc=f"Batch {batch_start//BATCH_SIZE + 1}"):
                 try:
                     index, cleaned_code, is_valid = future.result()
                     if is_valid:
@@ -274,6 +333,7 @@ def main():
                         update_progress(index)
                         processed_count += 1
                         debug_log(f"Successfully processed row {index}. Total processed: {processed_count}")
+                    completed_futures += 1
                 except Exception as e:
                     error_msg = f"Error processing batch: {str(e)}"
                     print(error_msg)
@@ -285,12 +345,20 @@ def main():
             # Check system resources
             if is_system_overloaded():
                 debug_log("System resources high, pausing for 10 seconds...")
+                print("\nSystem resources high, pausing for 10 seconds...")
                 time.sleep(10)
     
-    debug_log(f"Processing complete. Processed {processed_count} rows out of {incomplete_count} incomplete rows")
-    print(f"Processing complete. Processed {processed_count} rows out of {incomplete_count} incomplete rows")
-    print(f"Updated file saved as {output_file}")
-    print(f"Check {debug_file} for detailed processing log")
+    total_time = time.time() - start_time
+    completion_msg = (
+        f"\nProcessing complete!"
+        f"\nTotal time: {total_time/3600:.1f} hours"
+        f"\nProcessed {processed_count} rows out of {incomplete_count} incomplete rows"
+        f"\nAverage speed: {processed_count/total_time:.1f} rows/second"
+        f"\nUpdated file saved as {output_file}"
+        f"\nCheck {debug_file} for detailed processing log"
+    )
+    debug_log(completion_msg)
+    print(completion_msg)
 
 if __name__ == "__main__":
     main() 
