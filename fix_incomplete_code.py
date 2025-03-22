@@ -43,38 +43,34 @@ def debug_log(message):
         f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {message}\n")
 
 def is_incomplete_code(code):
-    """Check if the code starts with an explanation and contains incomplete Java code blocks"""
+    """Check if the code is incomplete Java code"""
     code_str = str(code).strip()
     
     # Check if the text starts with an explanation (case insensitive)
     starts_with_explanation = bool(re.match(r'^\s*to\s+fix\s+', code_str.lower()))
     
-    if not starts_with_explanation:
-        return False
+    # Look for Java code blocks
+    code_blocks = re.findall(r'```java\s*(.*?)```', code_str, re.DOTALL)
     
-    # Look specifically for Java code blocks
-    code_blocks = re.findall(r'```(?:java)?\s*(.*?)```', code_str, re.DOTALL)
+    # If it starts with "To fix" and has no complete code block, it's incomplete
+    if starts_with_explanation:
+        if not code_blocks:
+            debug_log(f"Found 'To fix' but no complete Java code block")
+            return True
+        
+        # Check if the last code block is incomplete
+        last_block = code_blocks[-1].strip()
+        has_missing_braces = last_block.count('{') != last_block.count('}')
+        has_missing_parens = last_block.count('(') != last_block.count(')')
+        ends_with_control = last_block.rstrip().endswith(('catch', 'try', 'else', 'finally', '{', '}', ';'))
+        
+        debug_log(f"Java code analysis - Missing braces: {has_missing_braces}, "
+                 f"Missing parentheses: {has_missing_parens}, "
+                 f"Ends abruptly: {ends_with_control}")
+        
+        return has_missing_braces or has_missing_parens or ends_with_control
     
-    if not code_blocks:
-        debug_log(f"No Java code blocks found in text that starts with 'To fix'")
-        return True  # If there's "To fix" but no code block, it needs fixing
-    
-    code_block = code_blocks[0]  # Get the first code block
-    
-    # Java-specific incompleteness checks
-    has_missing_braces = code_block.count('{') != code_block.count('}')
-    has_missing_imports = 'import' in code_block.lower() and not code_block.strip().startswith('import')
-    ends_with_control = code_block.rstrip().endswith(('catch', 'try', 'else', 'finally', '{', '}', ';'))
-    has_incomplete_class = ('class' in code_block and 
-                          (code_block.count('{') < 2 or  # At least class and method blocks
-                           not code_block.strip().endswith('}')))
-    
-    debug_log(f"Java code analysis - Starts with explanation: {starts_with_explanation}, "
-             f"Has code blocks: {bool(code_blocks)}, Missing braces: {has_missing_braces}, "
-             f"Missing imports: {has_missing_imports}, Ends abruptly: {ends_with_control}, "
-             f"Incomplete class: {has_incomplete_class}")
-    
-    return has_missing_braces or has_missing_imports or ends_with_control or has_incomplete_class
+    return False  # If it doesn't start with "To fix", assume it's complete
 
 def validate_completed_code(original_code, completed_code, vulnerability_type):
     """Validate that the completed Java code is acceptable"""
@@ -93,11 +89,10 @@ def validate_completed_code(original_code, completed_code, vulnerability_type):
         return False
     
     # Check for essential Java elements
-    has_class = 'class' in completed_clean
-    has_imports = completed_clean.strip().startswith('import') or 'import' not in original_clean
-    has_proper_end = completed_clean.strip().endswith('}')
+    has_proper_end = completed_clean.strip().endswith('}') or completed_clean.strip().endswith(';')
+    has_statements = completed_clean.count(';') > 0
     
-    if not (has_class and has_imports and has_proper_end):
+    if not (has_proper_end and has_statements):
         debug_log(f"Validation failed: Missing essential Java elements")
         return False
     
@@ -122,32 +117,16 @@ def extract_code_blocks(text):
     return text
 
 def clean_code(text):
-    """Clean the code by extracting only the Java code block without explanations"""
-    # Extract Java code blocks
-    code_blocks = re.findall(r'```(?:java)?\s*(.*?)```', text, re.DOTALL)
+    """Clean the code by extracting Java code blocks"""
+    # Look for Java code blocks
+    code_blocks = re.findall(r'```java\s*(.*?)```', text, re.DOTALL)
     
     if code_blocks:
-        # Return the first code block found, properly cleaned
-        code = code_blocks[0].strip()
-        # Remove any remaining markdown artifacts
-        code = re.sub(r'^```java\s*|\s*```$', '', code)
+        # Get the last code block (the fixed version)
+        code = code_blocks[-1].strip()
         return code
     
-    # If no code blocks found, try to extract just the code part
-    lines = text.split('\n')
-    code_lines = []
-    in_code = False
-    
-    for line in lines:
-        if '```' in line:
-            in_code = not in_code
-            continue
-        if in_code:
-            code_lines.append(line)
-    
-    if code_lines:
-        return '\n'.join(code_lines).strip()
-    
+    # If no code blocks found, return the cleaned text
     return text.strip()
 
 def get_last_processed_index():
@@ -168,15 +147,17 @@ def complete_code_with_ollama(incomplete_code, vulnerability_type):
     if is_system_overloaded():
         time.sleep(5)
     
-    # Extract the language from the code block
-    lang_match = re.search(r"```(\w+)", incomplete_code)
-    language = lang_match.group(1) if lang_match else "java"  # Default to Java if not specified
-    
     # Clean up the incomplete code first
     cleaned_incomplete = clean_code(incomplete_code)
     
-    prompt = f"""Complete this {vulnerability_type} vulnerability fix. The code below is incomplete and needs to be completed:
+    # Extract the explanation part
+    explanation_match = re.match(r'^\s*to\s+fix\s+(.*?)```java', incomplete_code, re.DOTALL | re.IGNORECASE)
+    explanation = explanation_match.group(1).strip() if explanation_match else ""
+    
+    prompt = f"""Complete this {vulnerability_type} vulnerability fix. 
+The explanation of the fix is: {explanation}
 
+The incomplete code is:
 {cleaned_incomplete}
 
 Requirements:
@@ -187,7 +168,7 @@ Requirements:
 5. Return ONLY the complete code without any explanations
 6. Include all necessary imports
 
-Return the complete code inside triple backticks."""
+Return the complete code inside triple backticks with the java language specifier."""
     
     retry_count = 0
     best_completion = None
