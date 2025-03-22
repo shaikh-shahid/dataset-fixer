@@ -43,49 +43,75 @@ def debug_log(message):
         f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {message}\n")
 
 def is_incomplete_code(code):
-    """Check if the code starts with an explanation and contains incomplete code blocks"""
+    """Check if the code starts with an explanation and contains incomplete Java code blocks"""
     code_str = str(code).strip()
     
-    # Check if the text starts with an explanation
-    starts_with_explanation = code_str.lower().startswith('to fix')
+    # Check if the text starts with an explanation (case insensitive)
+    starts_with_explanation = bool(re.match(r'^\s*to\s+fix\s+', code_str.lower()))
     
-    # Look for code blocks
-    code_blocks = re.findall(r"```(?:java|python|javascript|cpp|c\+\+|c#|csharp|ruby|php|go|rust|typescript|js)?\n(.*?)```", code_str, re.DOTALL)
+    if not starts_with_explanation:
+        return False
     
-    # If we have both explanation and code blocks, check if the code is incomplete
-    if starts_with_explanation and code_blocks:
-        code_block = code_blocks[0]  # Get the first code block
-        
-        # Check for common signs of incompleteness
-        has_missing_braces = code_block.count('{') != code_block.count('}')
-        ends_abruptly = code_block.strip().endswith(('catch', 'try', 'else', 'finally', '{', '}'))
-        
-        debug_log(f"Code analysis - Starts with explanation: {starts_with_explanation}, "
-                 f"Has code blocks: {bool(code_blocks)}, Missing braces: {has_missing_braces}, "
-                 f"Ends abruptly: {ends_abruptly}")
-        
-        return has_missing_braces or ends_abruptly
+    # Look specifically for Java code blocks
+    code_blocks = re.findall(r'```(?:java)?\s*(.*?)```', code_str, re.DOTALL)
     
-    return False
+    if not code_blocks:
+        debug_log(f"No Java code blocks found in text that starts with 'To fix'")
+        return True  # If there's "To fix" but no code block, it needs fixing
+    
+    code_block = code_blocks[0]  # Get the first code block
+    
+    # Java-specific incompleteness checks
+    has_missing_braces = code_block.count('{') != code_block.count('}')
+    has_missing_imports = 'import' in code_block.lower() and not code_block.strip().startswith('import')
+    ends_with_control = code_block.rstrip().endswith(('catch', 'try', 'else', 'finally', '{', '}', ';'))
+    has_incomplete_class = ('class' in code_block and 
+                          (code_block.count('{') < 2 or  # At least class and method blocks
+                           not code_block.strip().endswith('}')))
+    
+    debug_log(f"Java code analysis - Starts with explanation: {starts_with_explanation}, "
+             f"Has code blocks: {bool(code_blocks)}, Missing braces: {has_missing_braces}, "
+             f"Missing imports: {has_missing_imports}, Ends abruptly: {ends_with_control}, "
+             f"Incomplete class: {has_incomplete_class}")
+    
+    return has_missing_braces or has_missing_imports or ends_with_control or has_incomplete_class
 
 def validate_completed_code(original_code, completed_code, vulnerability_type):
-    """Validate that the completed code is acceptable"""
+    """Validate that the completed Java code is acceptable"""
     if not completed_code or len(completed_code) < MIN_CODE_LENGTH:
+        debug_log(f"Validation failed: Code too short or empty. Length: {len(completed_code) if completed_code else 0}")
         return False
-        
-    # Check if it's just a small fragment
-    if len(completed_code) < len(original_code) * 0.5:
+    
+    # Clean both codes for comparison
+    original_clean = clean_code(original_code)
+    completed_clean = clean_code(completed_code)
+    
+    # Java-specific validation
+    if not (completed_clean.count('{') == completed_clean.count('}') and
+            completed_clean.count('(') == completed_clean.count(')')):
+        debug_log(f"Validation failed: Mismatched braces or parentheses in Java code")
+        return False
+    
+    # Check for essential Java elements
+    has_class = 'class' in completed_clean
+    has_imports = completed_clean.strip().startswith('import') or 'import' not in original_clean
+    has_proper_end = completed_clean.strip().endswith('}')
+    
+    if not (has_class and has_imports and has_proper_end):
+        debug_log(f"Validation failed: Missing essential Java elements")
         return False
     
     # Check if it maintains the core functionality
-    original_lines = set(line.strip() for line in original_code.split('\n') if line.strip())
-    completed_lines = set(line.strip() for line in completed_code.split('\n') if line.strip())
+    original_lines = set(line.strip() for line in original_clean.split('\n') if line.strip())
+    completed_lines = set(line.strip() for line in completed_clean.split('\n') if line.strip())
     
     # At least 50% of original lines should be present in completed code
     common_lines = original_lines.intersection(completed_lines)
     if len(common_lines) < len(original_lines) * 0.5:
+        debug_log(f"Validation failed: Too few common lines with original code")
         return False
     
+    debug_log(f"Java code validation passed. Length: {len(completed_clean)}, Common lines: {len(common_lines)}")
     return True
 
 def extract_code_blocks(text):
@@ -96,13 +122,32 @@ def extract_code_blocks(text):
     return text
 
 def clean_code(text):
-    """Clean the code by extracting only the code block without explanations"""
-    # Extract code blocks
-    code_blocks = re.findall(r"```(?:java|python|javascript|cpp|c\+\+|c#|csharp|ruby|php|go|rust|typescript|js)?\n(.*?)```", text, re.DOTALL)
+    """Clean the code by extracting only the Java code block without explanations"""
+    # Extract Java code blocks
+    code_blocks = re.findall(r'```(?:java)?\s*(.*?)```', text, re.DOTALL)
     
     if code_blocks:
-        # Return the first code block found
-        return code_blocks[0].strip()
+        # Return the first code block found, properly cleaned
+        code = code_blocks[0].strip()
+        # Remove any remaining markdown artifacts
+        code = re.sub(r'^```java\s*|\s*```$', '', code)
+        return code
+    
+    # If no code blocks found, try to extract just the code part
+    lines = text.split('\n')
+    code_lines = []
+    in_code = False
+    
+    for line in lines:
+        if '```' in line:
+            in_code = not in_code
+            continue
+        if in_code:
+            code_lines.append(line)
+    
+    if code_lines:
+        return '\n'.join(code_lines).strip()
+    
     return text.strip()
 
 def get_last_processed_index():
