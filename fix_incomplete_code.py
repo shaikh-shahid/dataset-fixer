@@ -43,58 +43,30 @@ def debug_log(message):
         f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {message}\n")
 
 def is_incomplete_code(code):
-    """Check if the code is incomplete by looking for common markers and structure"""
-    code_str = str(code)
+    """Check if the code starts with an explanation and contains incomplete code blocks"""
+    code_str = str(code).strip()
     
-    # Common markers that indicate explanatory text
-    markers = [
-        "To fix the",
-        "Here is",
-        "Here's",
-        "Below is",
-        "The following",
-        "This code",
-        "In this example",
-        "We need to",
-        "You should",
-        "First,",
-        "Finally,",
-    ]
+    # Check if the text starts with an explanation
+    starts_with_explanation = code_str.lower().startswith('to fix')
     
-    # Check for markers
-    has_markers = any(marker.lower() in code_str.lower() for marker in markers)
+    # Look for code blocks
+    code_blocks = re.findall(r"```(?:java|python|javascript|cpp|c\+\+|c#|csharp|ruby|php|go|rust|typescript|js)?\n(.*?)```", code_str, re.DOTALL)
     
-    # Check structural indicators
-    opening_braces = code_str.count("{")
-    closing_braces = code_str.count("}")
-    has_mismatched_braces = opening_braces != closing_braces
+    # If we have both explanation and code blocks, check if the code is incomplete
+    if starts_with_explanation and code_blocks:
+        code_block = code_blocks[0]  # Get the first code block
+        
+        # Check for common signs of incompleteness
+        has_missing_braces = code_block.count('{') != code_block.count('}')
+        ends_abruptly = code_block.strip().endswith(('catch', 'try', 'else', 'finally', '{', '}'))
+        
+        debug_log(f"Code analysis - Starts with explanation: {starts_with_explanation}, "
+                 f"Has code blocks: {bool(code_blocks)}, Missing braces: {has_missing_braces}, "
+                 f"Ends abruptly: {ends_abruptly}")
+        
+        return has_missing_braces or ends_abruptly
     
-    # Check for incomplete method definitions
-    has_incomplete_methods = (
-        code_str.count("public") > code_str.count("}") or
-        code_str.count("private") > code_str.count("}") or
-        code_str.count("protected") > code_str.count("}")
-    )
-    
-    # Check for code fragments
-    looks_like_fragment = (
-        code_str.strip().endswith((";", "{", "}", "*/", "//")) or
-        len(code_str.strip().split('\n')) < 3  # Too few lines
-    )
-    
-    is_incomplete = (
-        has_markers or
-        has_mismatched_braces or
-        has_incomplete_methods or
-        looks_like_fragment
-    )
-    
-    # Log the decision for debugging
-    debug_log(f"Code analysis: markers={has_markers}, mismatched_braces={has_mismatched_braces}, "
-             f"incomplete_methods={has_incomplete_methods}, fragment={looks_like_fragment}, "
-             f"is_incomplete={is_incomplete}")
-    
-    return is_incomplete
+    return False
 
 def validate_completed_code(original_code, completed_code, vulnerability_type):
     """Validate that the completed code is acceptable"""
@@ -124,21 +96,14 @@ def extract_code_blocks(text):
     return text
 
 def clean_code(text):
-    """Clean the code by removing explanations and keeping only code blocks"""
-    # First try to extract code blocks
-    code = extract_code_blocks(text)
+    """Clean the code by extracting only the code block without explanations"""
+    # Extract code blocks
+    code_blocks = re.findall(r"```(?:java|python|javascript|cpp|c\+\+|c#|csharp|ruby|php|go|rust|typescript|js)?\n(.*?)```", text, re.DOTALL)
     
-    # Remove any remaining markdown or explanatory text
-    lines = code.split('\n')
-    code_lines = []
-    
-    for line in lines:
-        # Skip explanatory text or markdown
-        if line.strip().startswith(('To fix', 'Here is', 'Here\'s', 'The following')):
-            continue
-        code_lines.append(line)
-    
-    return '\n'.join(code_lines).strip()
+    if code_blocks:
+        # Return the first code block found
+        return code_blocks[0].strip()
+    return text.strip()
 
 def get_last_processed_index():
     """Get the last processed index from progress file"""
@@ -158,28 +123,26 @@ def complete_code_with_ollama(incomplete_code, vulnerability_type):
     if is_system_overloaded():
         time.sleep(5)
     
-    # Extract the language from the code block if possible
+    # Extract the language from the code block
     lang_match = re.search(r"```(\w+)", incomplete_code)
-    language = lang_match.group(1) if lang_match else "unknown"
+    language = lang_match.group(1) if lang_match else "java"  # Default to Java if not specified
     
     # Clean up the incomplete code first
     cleaned_incomplete = clean_code(incomplete_code)
     
-    prompt = f"""As a secure coding expert, complete this {vulnerability_type} vulnerability fix in {language}.
-The code below is incomplete. Your task is to provide a COMPLETE, working solution that includes ALL necessary parts:
+    prompt = f"""Complete this {vulnerability_type} vulnerability fix. The code below is incomplete and needs to be completed:
 
 {cleaned_incomplete}
 
 Requirements:
-1. Return the COMPLETE code, not just the missing parts
-2. Include ALL security measures and validation
-3. Keep all existing security features
-4. Include ALL necessary imports and class definitions
-5. Ensure proper error handling
-6. Return only code, no explanations
-7. Code must be complete and runnable
+1. Complete the code by adding any missing parts
+2. Ensure all security measures are maintained
+3. Add proper error handling
+4. Make sure all blocks are properly closed
+5. Return ONLY the complete code without any explanations
+6. Include all necessary imports
 
-The code should handle the {vulnerability_type} vulnerability completely and securely."""
+Return the complete code inside triple backticks."""
     
     retry_count = 0
     best_completion = None
@@ -192,7 +155,7 @@ The code should handle the {vulnerability_type} vulnerability completely and sec
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a secure coding expert. Always provide complete, secure, runnable code."
+                        "content": "You are a secure coding expert. Complete the code without adding explanations."
                     },
                     {"role": "user", "content": prompt}
                 ]
@@ -201,7 +164,7 @@ The code should handle the {vulnerability_type} vulnerability completely and sec
             completed_code = response['message']['content']
             cleaned_completion = clean_code(completed_code)
             
-            # Keep the best (longest) valid completion
+            # Validate the completion
             if validate_completed_code(cleaned_incomplete, cleaned_completion, vulnerability_type):
                 if len(cleaned_completion) > max_length:
                     best_completion = cleaned_completion
