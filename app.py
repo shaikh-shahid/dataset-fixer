@@ -9,7 +9,7 @@ import concurrent.futures
 input_file = "clean_vulnerability_data_v2.csv"
 output_file = "vulnerabilities_fixed.csv"
 progress_file = "progress.log"
-num_workers = 2  # Adjust based on your CPU cores (e.g., set to os.cpu_count())
+num_workers = 4  # Adjust based on your CPU cores (e.g., set to os.cpu_count())
 
 # Function to extract only code from AI response
 def extract_code(response_text):
