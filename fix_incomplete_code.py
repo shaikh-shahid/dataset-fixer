@@ -335,54 +335,60 @@ def process_row(args):
 
 def main():
     # Read the CSV file
+    print("\nReading CSV file...")
     df = pd.read_csv(input_file)
+    total_rows = len(df)
     
     # Get last processed index
     last_processed_index = get_last_processed_index()
     
-    # Create a copy of the dataframe for processing
-    processed_df = df.copy()
+    # First, identify all rows that need fixing (start with "To fix")
+    print("\nIdentifying rows that need fixing...")
+    needs_fixing = df['fixed_code'].str.lower().str.startswith('to fix')
+    incomplete_rows = df[needs_fixing]
+    incomplete_indices = incomplete_rows.index
     
-    # Count incomplete rows first
-    incomplete_count = 0
-    total_rows = len(df)
-    print("\nScanning for incomplete rows...")
+    # Filter out already processed rows
+    unprocessed_indices = incomplete_indices[incomplete_indices > last_processed_index]
+    unprocessed_rows = df.loc[unprocessed_indices]
     
-    for index, row in tqdm(df.iterrows(), total=total_rows, desc="Scanning"):
-        if is_incomplete_code(str(row['fixed_code'])):
-            incomplete_count += 1
-            debug_log(f"Row {index} identified as incomplete. Vulnerability type: {row['vulnerability_type']}")
+    incomplete_count = len(incomplete_indices)
+    remaining_count = len(unprocessed_indices)
     
-    debug_log(f"Found {incomplete_count} incomplete rows out of {len(df)} total rows")
-    print(f"\nFound {incomplete_count} incomplete rows out of {total_rows} total rows that need fixing...")
+    debug_log(f"Found {incomplete_count} incomplete rows out of {total_rows} total rows")
+    debug_log(f"Remaining unprocessed rows: {remaining_count}")
     
-    # Get unprocessed rows
-    unprocessed_rows = list(df.iloc[last_processed_index + 1:].iterrows())
-    remaining_rows = len(unprocessed_rows)
+    print(f"\nFound {incomplete_count} incomplete rows out of {total_rows} total rows")
+    print(f"Remaining unprocessed rows: {remaining_count}")
     
-    if remaining_rows == 0:
+    if remaining_count == 0:
         print("No remaining rows to process. All done!")
         return
     
-    print(f"\nProcessing {remaining_rows} remaining rows with {MAX_WORKERS} workers...")
+    print(f"\nProcessing {remaining_count} remaining rows with {MAX_WORKERS} workers...")
     
     processed_count = 0
     start_time = time.time()
     
+    # Create a copy of the dataframe for processing
+    processed_df = df.copy()
+    
     with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         # Process rows in batches
-        for batch_start in range(0, remaining_rows, BATCH_SIZE):
-            batch_end = min(batch_start + BATCH_SIZE, remaining_rows)
-            batch = unprocessed_rows[batch_start:batch_end]
+        unprocessed_list = list(unprocessed_rows.iterrows())
+        
+        for batch_start in range(0, remaining_count, BATCH_SIZE):
+            batch_end = min(batch_start + BATCH_SIZE, remaining_count)
+            batch = unprocessed_list[batch_start:batch_end]
             
             # Calculate progress
-            progress = (batch_start / remaining_rows) * 100
+            progress = (batch_start / remaining_count) * 100
             elapsed_time = time.time() - start_time
             rows_per_second = batch_start / elapsed_time if elapsed_time > 0 else 0
-            estimated_remaining = (remaining_rows - batch_start) / rows_per_second if rows_per_second > 0 else 0
+            estimated_remaining = (remaining_count - batch_start) / rows_per_second if rows_per_second > 0 else 0
             
             progress_msg = (
-                f"\nProgress: {progress:.1f}% ({batch_start}/{remaining_rows} rows)"
+                f"\nProgress: {progress:.1f}% ({batch_start}/{remaining_count} rows)"
                 f"\nProcessing speed: {rows_per_second:.1f} rows/second"
                 f"\nEstimated time remaining: {estimated_remaining/3600:.1f} hours"
                 f"\nProcessed so far: {processed_count} rows completed successfully"
