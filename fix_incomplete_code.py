@@ -18,10 +18,10 @@ debug_file = "debug_log.txt"
 
 # Configuration
 MAX_WORKERS = 4
-MEMORY_THRESHOLD = 75
-BATCH_SIZE = 20
+MEMORY_THRESHOLD = 70
+BATCH_SIZE = 30
 MIN_CODE_LENGTH = 100  # Minimum acceptable length for completed code
-MAX_RETRIES = 5  # Increased retries
+MAX_RETRIES = 3  # Increased retries
 
 def get_system_memory_usage():
     """Get current system memory usage percentage"""
